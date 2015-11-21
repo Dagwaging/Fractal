@@ -36,13 +36,19 @@ int main() {
 	clock_gettime(CLOCK_REALTIME, &time);
 	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Initializing...");
 
+	init();
+	set_size(256, 256);
+	set_shader(mandelbrot_fshader_source);
+
 	char* buffer = NULL;
-	int size = render(mandelbrot_fshader_source, 256, 256, 0.295, 0.015, 0.305, 0.025, &buffer);
+	int size = render(0.295, 0.015, 0.305, 0.025, &buffer);
 
 	if(size > 0) {
 		fwrite(buffer, sizeof(char), size, stdout);
 	}
 	fclose(stdout);
+
+	deinit();
 
 	clock_gettime(CLOCK_REALTIME, &time);
 	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Complete");
