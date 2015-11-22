@@ -6,10 +6,15 @@
 
 #define check() //assert(glGetError() == 0)
 
-void init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface) {
+int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface) {
+	int success = 1;
+
 	EGLConfig config;
-	EGLBoolean result;
 	EGLint num_config;
+
+	EGLDisplay display;
+	EGLContext context;
+	EGLSurface surface;
 
 	static const EGLint attribute_list[] =
 	{
@@ -29,63 +34,58 @@ void init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurf
 
 	bcm_host_init();
 
-	EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	assert(display != EGL_NO_DISPLAY);
+	success = success && (display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) != EGL_NO_DISPLAY;
 	check();
 
-	result = eglInitialize(display, NULL, NULL);
-	assert(EGL_FALSE != result);
+	success = success && eglInitialize(display, NULL, NULL) != EGL_FALSE;
 	check();
 
-	result = eglChooseConfig(display, attribute_list, &config, 1, &num_config);
-	assert(EGL_FALSE != result);
+	success = success && eglChooseConfig(display, attribute_list, &config, 1, &num_config) != EGL_FALSE;
 	check();
 
-	result = eglBindAPI(EGL_OPENGL_ES_API);
-	assert(EGL_FALSE != result);
+	success = success && eglBindAPI(EGL_OPENGL_ES_API) != EGL_FALSE;
 	check();
 
-	EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attributes);
-	assert(context != EGL_NO_CONTEXT);
+	success = success && (context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attributes)) != EGL_NO_CONTEXT;
 	check();
 
-	EGLSurface surface = eglCreateWindowSurface(display, config, NULL, NULL);
-	assert(surface != EGL_NO_SURFACE);
+	success = success && (surface = eglCreateWindowSurface(display, config, NULL, NULL)) != EGL_NO_SURFACE;
 	check();
 
-	result = eglMakeCurrent(display, surface, surface, context);
-	assert(EGL_FALSE != result);
+	success = success && eglMakeCurrent(display, surface, surface, context) != EGL_FALSE;
 	check();
 
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	check();
+	if(success) {
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		check();
 
-	*outDisplay = display;
-	*outContext = context;
-	*outSurface = surface;
+		*outDisplay = display;
+		*outContext = context;
+		*outSurface = surface;
+	}
+
+	return success;
 }
 
-void deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface) {
-	EGLBoolean result;
+int deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface) {
+	int success = 1;
 
-	result = eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-	assert(EGL_FALSE != result);
+	success = success && eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_FALSE;
 	check();
 
-	result = eglDestroySurface(display, surface);
-	assert(EGL_FALSE != result);
+	success = success && eglDestroySurface(display, surface) != EGL_FALSE;
 	check();
 	
-	result = eglDestroyContext(display, context);
-	assert(EGL_FALSE != result);
+	success = success && eglDestroyContext(display, context) != EGL_FALSE;
 	check();
 
-	result = eglTerminate(display);
-	assert(EGL_FALSE != result);
+	success = success && eglTerminate(display) != EGL_FALSE;
 	check();
 
 	bcm_host_deinit();
+
+	return success;
 }
 
 
@@ -93,7 +93,8 @@ GLuint init_shader(const GLchar* source, GLenum type, char** log) {
 	GLuint shader = glCreateShader(type);
 	check();
 
-	glShaderSource(shader, 1, &source, 0);
+	if(shader)
+		glShaderSource(shader, 1, &source, 0);
 	check();
 
 	glCompileShader(shader);
@@ -160,7 +161,7 @@ GLuint init_texture(GLenum texture, int width, int height) {
 	glBindTexture(GL_TEXTURE_2D, tex);
 	check();
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
 	check();
 
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -206,7 +207,7 @@ GLuint init_buffer(GLuint attribute, GLfloat data[], int length) {
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
 	check();
 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * length, data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * length, data, GL_DYNAMIC_DRAW);
 	check();
 
 	glVertexAttribPointer(attribute, 2, GL_FLOAT, 0, length, 0);

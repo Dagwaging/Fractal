@@ -4,8 +4,8 @@
 #include "GLES2/gl2.h"
 #include "EGL/egl.h"
 
-void init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface);
-void deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface);
+int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface);
+int deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface);
 
 GLuint init_shader(const GLchar* source, GLenum type, char** log);
 void deinit_shader(GLuint program, GLuint shader);
