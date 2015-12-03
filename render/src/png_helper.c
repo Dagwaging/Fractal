@@ -1,91 +1,247 @@
-#include "png.h"
-#include <stdlib.h>
-#include <stdint.h>
+#include <stdio.h>
 
-struct png_buffer {
-	char* buffer;
-	size_t size;
-};
+#include "bcm_host.h"
+#include "ilclient.h"
 
-static void png_write_data(png_structp png_ptr, png_bytep data, png_size_t length) {
-	struct png_buffer* buffer = (struct png_buffer*) png_get_io_ptr(png_ptr);
-	size_t size = buffer->size + length;
+#define TIMEOUT_MS 2000
 
-	if(buffer->buffer)
-		buffer->buffer = realloc(buffer->buffer, size);
-	else
-		buffer->buffer = malloc(size);
-	
-	if(!buffer->buffer)
-		png_error(png_ptr, "Write Error");
-	
-	memcpy(buffer->buffer + buffer->size, data, length);
-	buffer->size += length;
+static ILCLIENT_T* client;
+
+static COMPONENT_T* encoder;
+static OMX_HANDLETYPE encoder_handle;
+static int encoder_inport;
+static int encoder_outport;
+
+static int image_width;
+static int image_height;
+
+static int ready = 0;
+static int size_ready = 0;
+
+#define min(a, b) (a < b ? a : b)
+
+static int align(int length) {
+	return (((length - 1) >> 4) + 1) << 4;
 }
 
-static void png_flush(png_structp png_ptr) { }
+static int align_image(char* image, int width, int height, char** buffer) {
+	int width_aligned = align(width);
+	int height_aligned = align(height);
 
-static png_bytepp png_make_rows(const uint8_t* image, int width, int height, int components) {
-	int row_size = width * components;
-	png_bytepp rows = (png_bytepp) malloc(sizeof(png_bytep) * height);
+	char* output = (char*) calloc(width_aligned * height_aligned * 3, sizeof(char));
 
-	int i, j;
-	for(i = 0; i < height; i++) {
-		png_bytep row = (png_bytep) malloc(sizeof(png_byte) * row_size);
-
-		for(j = 0; j < row_size; j++) {
-			row[j] = image[j + i * row_size];
-		}
-		rows[height - i - 1] = row;
-	}
-
-	return rows;
-}
-
-static void png_free_rows(png_bytepp rows, int height) {
 	int i;
 	for(i = 0; i < height; i++) {
-		free(rows[i]);
+		int destination = i * width_aligned * 3;
+		int source = i * width * 3;
+		memcpy((void*) (output + destination), (void*) (image + source), width * 3);
 	}
-	free(rows);
+	
+	*buffer = output;
+
+	return width_aligned * height_aligned * 3;
 }
 
-int png_write(const uint8_t* image, int width, int height, char** buffer) {
-	png_bytepp rows = png_make_rows(image, width, height, 4);
-
-	struct png_buffer state;
-	state.buffer = NULL;
-	state.size = 0;
-
-	png_structp png_ptr = NULL;
-	png_infop info_ptr = NULL;
+int png_init() {
+	if(ready)
+		return 1;
 	
-	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-	info_ptr = png_create_info_struct(png_ptr);
+	bcm_host_init();
 
-	if(setjmp(png_jmpbuf(png_ptr))) {
-		state.size = -1;
-		goto finalize;
+	if(!(client = ilclient_init())) {
+		fprintf(stderr, "Unable to initialize ILClient\n");
+		return 0;
 	}
 
-	// Uncomment for a substantial (2-3x) speedup at the cost of a much (100x) larger image
-	// png_set_compression_level(png_ptr, 0);
-	// png_set_filter(png_ptr, 0, PNG_FILTER_NONE);
+	if(OMX_Init() != OMX_ErrorNone) {
+		ilclient_destroy(client);
+		fprintf(stderr, "Unable to initialize OpenMax\n");
+		return 0;
+	}
 
-	png_set_IHDR(png_ptr, info_ptr, width, height, 8, PNG_COLOR_TYPE_RGBA,
-		PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
 
-	png_set_write_fn(png_ptr, &state, png_write_data, png_flush);
-	png_set_rows(png_ptr, info_ptr, rows);
 
-	png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+	if(ilclient_create_component(client, &encoder, "image_encode", ILCLIENT_DISABLE_ALL_PORTS | ILCLIENT_ENABLE_INPUT_BUFFERS | ILCLIENT_ENABLE_OUTPUT_BUFFERS)) {
+		fprintf(stderr, "Unable to create encoder component\n");
+		return 0;
+	}
 
-	*buffer = state.buffer;
+	encoder_handle = ilclient_get_handle(encoder);
 
-	finalize:
-		if(info_ptr) png_free_data(png_ptr, info_ptr, PNG_FREE_ALL, -1);
-		if(png_ptr) png_destroy_write_struct(&png_ptr, &info_ptr);
-		png_free_rows(rows, height);
+
+	OMX_PORT_PARAM_TYPE port;
+	port.nSize = sizeof(OMX_PORT_PARAM_TYPE);
+	port.nVersion.nVersion = OMX_VERSION;
+
+	if(OMX_GetParameter(encoder_handle, OMX_IndexParamImageInit, &port) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to get encoder ports\n");
+		return 0;
+	}
+
+	if(port.nPorts != 2) {
+		fprintf(stderr, "No ports on JPEG encoder\n");
+		return 0;
+	}
+
+	encoder_inport = port.nStartPortNumber;
+	encoder_outport = port.nStartPortNumber + 1;
+
+
+
+	ready = 1;
+
+	return 1;
+}
+
+int png_set_size(int width, int height) {
+	if(ilclient_change_component_state(encoder, OMX_StateLoaded)) {
+		fprintf(stderr, "Unable to set encoder state to loaded\n");
+		return 0;
+	}
+
+	OMX_PARAM_PORTDEFINITIONTYPE encoder_portdef;
+	encoder_portdef.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+	encoder_portdef.nVersion.nVersion = OMX_VERSION;
+	encoder_portdef.nPortIndex = encoder_inport;
+
+	if(OMX_GetParameter(encoder_handle, OMX_IndexParamPortDefinition, &encoder_portdef) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to get encoder port definition\n");
+		return 0;
+	}
+
+	encoder_portdef.format.image.nFrameWidth = width;
+	encoder_portdef.format.image.nFrameHeight = height;
+	encoder_portdef.format.image.nStride = align(width) * 3;
+	encoder_portdef.format.image.nSliceHeight = align(height);
+	encoder_portdef.format.image.eColorFormat = OMX_COLOR_Format24bitBGR888;
+	encoder_portdef.format.image.eCompressionFormat = OMX_IMAGE_CodingUnused;
+	encoder_portdef.nBufferSize = align(width) * align(height) * 3;
+
+	int err;
+	if((err = OMX_SetParameter(encoder_handle, OMX_IndexParamPortDefinition, &encoder_portdef)) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to set encoder port definition\n");
+		return 0;
+	}
+
+	OMX_IMAGE_PARAM_PORTFORMATTYPE encoder_format;
+	memset(&encoder_format, 0, sizeof(OMX_IMAGE_PARAM_PORTFORMATTYPE));
+	encoder_format.nSize = sizeof(OMX_IMAGE_PARAM_PORTFORMATTYPE);
+	encoder_format.nVersion.nVersion = OMX_VERSION;
+	encoder_format.nPortIndex = encoder_outport;
+	encoder_format.eCompressionFormat = OMX_IMAGE_CodingPNG;
+	encoder_format.eColorFormat = OMX_COLOR_FormatUnused;
+
+	if(OMX_SetParameter(encoder_handle, OMX_IndexParamImagePortFormat, &encoder_format) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to set encoder format\n");
+		return 0;
+	}
+
+	if(OMX_GetParameter(encoder_handle, OMX_IndexParamImagePortFormat, &encoder_format) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to get encoder format\n");
+		return 0;
+	}
+
+	if(ilclient_change_component_state(encoder, OMX_StateIdle)) {
+		fprintf(stderr, "Unable to set encoder state to idle\n");
+		return 0;
+	}
+
+	if(ilclient_enable_port_buffers(encoder, encoder_inport, NULL, NULL, NULL)) {
+		fprintf(stderr, "Unable to enable encoder input port buffer\n");
+		return 0;
+	}
+
+	if(ilclient_enable_port_buffers(encoder, encoder_outport, NULL, NULL, NULL)) {
+		fprintf(stderr, "Unable to enable encoder output port buffer\n");
+		return 0;
+	}
+
+	image_width = width;
+	image_height = height;
+
+	size_ready = 1;
+
+	return 1;
+}
+
+int png_encode(char* input_image, char** output_image) {
+	if(!(ready && size_ready))
+		return -1;
+
+	if(ilclient_change_component_state(encoder, OMX_StateExecuting)) {
+		fprintf(stderr, "Unable to set encoder state to executing\n");
+		return -1;
+	}
+
+	char* image = NULL, * output = NULL;
+
+	int length = align_image(input_image, image_width, image_height, &image);
+
+	int read_in = 0, read_out = 0;
+	OMX_BUFFERHEADERTYPE* buffer;
+
+	while(length > 0) {
+		buffer = ilclient_get_input_buffer(encoder, encoder_inport, 1);
+
+		if(buffer) {
+			size_t len = min(buffer->nAllocLen, length);
+			memcpy(buffer->pBuffer, image + read_in, len);
+			buffer->nFilledLen = len;
+
+			read_in += len;
+			length -= len;
+
+			if(length <= 0)
+				buffer->nFlags |= OMX_BUFFERFLAG_EOS;
+
+			if(OMX_EmptyThisBuffer(encoder_handle, buffer) != OMX_ErrorNone)
+				fprintf(stderr, "Error emptying buffer\n");
+		}
+	}
+
+	free(image);
+
+	while(1) {
+		buffer = ilclient_get_output_buffer(encoder, encoder_outport, 1);
+
+		if(buffer) {
+			output = realloc(output, read_out + buffer->nFilledLen);
+			memcpy(output + read_out, buffer->pBuffer, buffer->nFilledLen);
+
+			read_out += buffer->nFilledLen;
+
+			if(buffer->nFlags & OMX_BUFFERFLAG_EOS)
+				break;
+
+			if(OMX_FillThisBuffer(encoder_handle, buffer) != OMX_ErrorNone)
+				fprintf(stderr, "Error filling buffer\n");
+		}
+	}
+
+	if(ilclient_change_component_state(encoder, OMX_StateIdle)) {
+		fprintf(stderr, "Unable to set encoder state to idle\n");
+		return -1;
+	}
+
+	*output_image = output;
+
+	return read_out;
+}
+
+int png_deinit() {
+	if(!ready)
+		return 1;
+
+	COMPONENT_T* components[2];
+	components[0] = encoder;
+	components[1] = NULL;
 	
-	return state.size;
+	ilclient_cleanup_components(components);
+	ilclient_destroy(client);
+	OMX_Deinit();
+	bcm_host_deinit();
+
+	ready = 0;
+
+	return 1;
 }

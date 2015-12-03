@@ -65,6 +65,8 @@ int init() {
 
 	vshader = init_shader(vshader_source, GL_VERTEX_SHADER, NULL);
 
+	success = success && png_init();
+
 	gl_ready = success;
 
 	return success;
@@ -75,6 +77,8 @@ int deinit() {
 
 	if(!gl_ready)
 		return 1;
+	
+	success = success && png_deinit();
 
 	success = success && deinit_gl(display, context, surface);
 
@@ -111,7 +115,7 @@ int set_size(int width, int height) {
 
 	tex_ready = 1;
 
-	success = 1;
+	success = png_set_size(width, height);
 
 	return success;
 }
@@ -193,8 +197,8 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	printlog("Getting rendered pixels...");
 
-	uint8_t* image = (uint8_t*) malloc(sizeof(uint8_t) * tex_width * tex_height * 4);
-	glReadPixels(0, 0, tex_width, tex_height, GL_RGBA, GL_UNSIGNED_BYTE, image);
+	uint8_t* image = (uint8_t*) malloc(sizeof(uint8_t) * tex_width * tex_height * 3);
+	glReadPixels(0, 0, tex_width, tex_height, GL_RGB, GL_UNSIGNED_BYTE, image);
 	check();
 
 	printlog("Got rendered pixels");
@@ -202,7 +206,7 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	printlog("Writing file...");
 
-	size = png_write(image, tex_width, tex_height, buffer);
+	size = png_encode(image, buffer);
 
 	char log[20];
 	sprintf(log, "%d bytes written", size);
