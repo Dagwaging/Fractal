@@ -2,6 +2,8 @@
 
 #include "bcm_host.h"
 #include "ilclient.h"
+#include "EGL/egl.h"
+#include "EGL/eglext.h"
 
 #define TIMEOUT_MS 2000
 
@@ -146,8 +148,8 @@ int png_set_size(int width, int height) {
 		return 0;
 	}
 
-	if(ilclient_enable_port_buffers(encoder, encoder_inport, NULL, NULL, NULL)) {
-		fprintf(stderr, "Unable to enable encoder input port buffer\n");
+	if(OMX_SendCommand(encoder_handle, OMX_CommandPortEnable, encoder_inport, NULL) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to enable encoder input port\n");
 		return 0;
 	}
 
@@ -164,42 +166,30 @@ int png_set_size(int width, int height) {
 	return 1;
 }
 
-int png_encode(char* input_image, char** output_image) {
+int png_encode(EGLImageKHR eglImage, char** output_image) {
 	if(!(ready && size_ready))
 		return -1;
+
+	OMX_BUFFERHEADERTYPE* buffer;
+
+	int err;
+	if((err = OMX_UseEGLImage(encoder_handle, &buffer, encoder_inport, NULL, eglImage)) != OMX_ErrorNone) {
+		fprintf(stderr, "Unable to set EGLImage\n");
+		return -1;
+	}
 
 	if(ilclient_change_component_state(encoder, OMX_StateExecuting)) {
 		fprintf(stderr, "Unable to set encoder state to executing\n");
 		return -1;
 	}
 
-	char* image = NULL, * output = NULL;
-
-	int length = align_image(input_image, image_width, image_height, &image);
-
-	int read_in = 0, read_out = 0;
-	OMX_BUFFERHEADERTYPE* buffer;
-
-	while(length > 0) {
-		buffer = ilclient_get_input_buffer(encoder, encoder_inport, 1);
-
-		if(buffer) {
-			size_t len = min(buffer->nAllocLen, length);
-			memcpy(buffer->pBuffer, image + read_in, len);
-			buffer->nFilledLen = len;
-
-			read_in += len;
-			length -= len;
-
-			if(length <= 0)
-				buffer->nFlags |= OMX_BUFFERFLAG_EOS;
-
-			if(OMX_EmptyThisBuffer(encoder_handle, buffer) != OMX_ErrorNone)
-				fprintf(stderr, "Error emptying buffer\n");
-		}
+	if(OMX_EmptyThisBuffer(encoder_handle, buffer) != OMX_ErrorNone) {
+		fprintf(stderr, "Error emptying buffer\n");
+		return -1;
 	}
 
-	free(image);
+	char* output = NULL;
+	int read_out = 0;
 
 	while(1) {
 		buffer = ilclient_get_output_buffer(encoder, encoder_outport, 1);

@@ -31,6 +31,8 @@ static int gl_ready = 0;
 static int tex_width;
 static int tex_height;
 
+static EGLImageKHR eglImage;
+
 static GLuint tex;
 static GLuint tex_fb;
 
@@ -109,6 +111,8 @@ int set_size(int width, int height) {
 
 	tex2 = init_texture(GL_TEXTURE1, width, height);
 	tex_fb2 = init_framebuffer(tex2);
+
+	eglImage = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_2D_KHR, tex, 0);
 
 	glViewport(0, 0, width, height);
 	check();
@@ -194,19 +198,9 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	printlog("Fractal drawn");
 
-
-	printlog("Getting rendered pixels...");
-
-	uint8_t* image = (uint8_t*) malloc(sizeof(uint8_t) * tex_width * tex_height * 3);
-	glReadPixels(0, 0, tex_width, tex_height, GL_RGB, GL_UNSIGNED_BYTE, image);
-	check();
-
-	printlog("Got rendered pixels");
-
-
 	printlog("Writing file...");
 
-	size = png_encode(image, buffer);
+	size = png_encode(eglImage, buffer);
 
 	char log[20];
 	sprintf(log, "%d bytes written", size);
