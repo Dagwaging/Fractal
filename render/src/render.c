@@ -107,6 +107,8 @@ int set_size(int width, int height) {
 	if(!gl_ready)
 		return 0;
 
+	printlog("Initializing textures...");
+
 	if(tex_ready) {
 		deinit_texture(tex);
 		deinit_framebuffer(tex_fb);
@@ -132,12 +134,16 @@ int set_size(int width, int height) {
 	if(!png_set_size(width, height))
 		return 0;
 
+	printlog("Initialized textures");
+
 	return 1;
 }
 
 int set_shader(const char* shader) {
 	if(!gl_ready)
 		return 0;
+
+	printlog("Initializing shader...");
 
 	if(shader_ready) {
 		deinit_shader(program, fshader);
@@ -159,8 +165,9 @@ int set_shader(const char* shader) {
 	uniform_previous = glGetUniformLocation(program, "previous");
 	check();
 
-	shader_ready = 1;
+	printlog("Initialized shader");
 
+	shader_ready = 1;
 
 	return 1;
 }

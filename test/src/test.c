@@ -37,8 +37,19 @@ int main() {
 	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Initializing...");
 
 	init();
+
+	clock_gettime(CLOCK_REALTIME, &time);
+	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Setting size...");
+
 	set_size(256, 256);
+
+	clock_gettime(CLOCK_REALTIME, &time);
+	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Setting up shader...");
+
 	set_shader(mandelbrot_fshader_source);
+
+	clock_gettime(CLOCK_REALTIME, &time);
+	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Rendering...");
 
 	char* buffer = NULL;
 	int size = render(0.295, 0.015, 0.305, 0.025, &buffer);
@@ -47,6 +58,9 @@ int main() {
 		fwrite(buffer, sizeof(char), size, stdout);
 	}
 	fclose(stdout);
+
+	clock_gettime(CLOCK_REALTIME, &time);
+	fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, "Cleaning up...");
 
 	deinit();
 
