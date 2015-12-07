@@ -52,39 +52,39 @@ static int shader_ready = 0;
 
 
 int init() {
-	int success = 1;
-
 	if(gl_ready)
 		return 1;
 
 	printlog("Intializing OpenGL...");
 
-	success = success && init_gl(&display, &context, &surface);
-
-	printlog("Initialized OpenGL");
+	if(!init_gl(&display, &context, &surface))
+		return 0;
 
 	vshader = init_shader(vshader_source, GL_VERTEX_SHADER, NULL);
 
-	success = success && png_init();
+	if(!png_init())
+		return 0;
 
-	gl_ready = success;
+	printlog("Initialized OpenGL");
 
-	return success;
+	gl_ready = 1;
+
+	return 1;
 }
 
 int deinit() {
-	int success = 1;
-
 	if(!gl_ready)
 		return 1;
 	
-	success = success && png_deinit();
+	if(!png_deinit())
+		return 0;
 
-	success = success && deinit_gl(display, context, surface);
+	if(!deinit_gl(display, context, surface))
+		return 0;
 
-	gl_ready = !success;
+	gl_ready = 0;
 
-	return success;
+	return 1;
 }
 
 int set_size(int width, int height) {
@@ -98,8 +98,6 @@ int set_size(int width, int height) {
 		deinit_texture(tex2);
 		deinit_framebuffer(tex_fb2);
 	}
-
-	int success = 0;
 
 	tex_width = width;
 	tex_height = height;
@@ -115,9 +113,10 @@ int set_size(int width, int height) {
 
 	tex_ready = 1;
 
-	success = png_set_size(width, height);
+	if(!png_set_size(width, height))
+		return 0;
 
-	return success;
+	return 1;
 }
 
 int set_shader(const char* shader) {
@@ -128,8 +127,6 @@ int set_shader(const char* shader) {
 		deinit_shader(program, fshader);
 		deinit_program(program);
 	}
-
-	int success = 0;
 
 	fshader = init_shader(shader, GL_FRAGMENT_SHADER, NULL);
 	program = init_program(vshader, fshader, NULL);
@@ -145,9 +142,8 @@ int set_shader(const char* shader) {
 
 	shader_ready = 1;
 
-	success = 1;
 
-	return success;
+	return 1;
 }
 
 int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
@@ -197,7 +193,7 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	printlog("Getting rendered pixels...");
 
-	uint8_t* image = (uint8_t*) malloc(sizeof(uint8_t) * tex_width * tex_height * 3);
+	char* image = (char*) malloc(sizeof(char) * tex_width * tex_height * 3);
 	glReadPixels(0, 0, tex_width, tex_height, GL_RGB, GL_UNSIGNED_BYTE, image);
 	check();
 

@@ -7,8 +7,6 @@
 #define check() //assert(glGetError() == 0)
 
 int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface) {
-	int success = 1;
-
 	EGLConfig config;
 	EGLint num_config;
 
@@ -32,58 +30,65 @@ int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurfa
 
 	bcm_host_init();
 
-	success = success && (display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) != EGL_NO_DISPLAY;
+	if((display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) == EGL_NO_DISPLAY)
+		return 0;
 	check();
 
-	success = success && eglInitialize(display, NULL, NULL) != EGL_FALSE;
+	if(eglInitialize(display, NULL, NULL) == EGL_FALSE)
+		return 0;
 	check();
 
-	success = success && eglChooseConfig(display, attribute_list, &config, 1, &num_config) != EGL_FALSE;
+	if(eglChooseConfig(display, attribute_list, &config, 1, &num_config) == EGL_FALSE)
+		return 0;
 	check();
 
-	success = success && eglBindAPI(EGL_OPENGL_ES_API) != EGL_FALSE;
+	if(eglBindAPI(EGL_OPENGL_ES_API) == EGL_FALSE)
+		return 0;
 	check();
 
-	success = success && (context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attributes)) != EGL_NO_CONTEXT;
+	if((context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attributes)) == EGL_NO_CONTEXT)
+		return 0;
 	check();
 
-	success = success && (surface = eglCreateWindowSurface(display, config, NULL, NULL)) != EGL_NO_SURFACE;
+	if((surface = eglCreateWindowSurface(display, config, NULL, NULL)) == EGL_NO_SURFACE)
+		return 0;
 	check();
 
-	success = success && eglMakeCurrent(display, surface, surface, context) != EGL_FALSE;
+	if(eglMakeCurrent(display, surface, surface, context) == EGL_FALSE)
+		return 0;
 	check();
 
-	if(success) {
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		check();
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	check();
 
-		*outDisplay = display;
-		*outContext = context;
-		*outSurface = surface;
-	}
+	*outDisplay = display;
+	*outContext = context;
+	*outSurface = surface;
 
-	return success;
+	return 1;
 }
 
 int deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface) {
-	int success = 1;
-
-	success = success && eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_FALSE;
+	if(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) == EGL_FALSE)
+		return 0;
 	check();
 
-	success = success && eglDestroySurface(display, surface) != EGL_FALSE;
+	if(eglDestroySurface(display, surface) == EGL_FALSE)
+		return 0;
 	check();
 	
-	success = success && eglDestroyContext(display, context) != EGL_FALSE;
+	if(eglDestroyContext(display, context) == EGL_FALSE)
+		return 0;
 	check();
 
-	success = success && eglTerminate(display) != EGL_FALSE;
+	if(eglTerminate(display) == EGL_FALSE)
+		return 0;
 	check();
 
 	bcm_host_deinit();
 
-	return success;
+	return 1;
 }
 
 
