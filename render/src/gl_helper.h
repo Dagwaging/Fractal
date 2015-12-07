@@ -19,7 +19,9 @@ void deinit_texture(GLuint texture);
 GLuint init_framebuffer(GLuint texture);
 void deinit_framebuffer(GLuint framebuffer);
 
-GLuint init_buffer(GLuint attribute, GLfloat data[], int length);
+GLuint init_buffer(GLfloat data[], int length);
+void update_buffer(GLuint buffer, GLfloat data[], int length);
+void bind_buffer(GLuint attribute, GLuint buffer, int length);
 void deinit_buffer(GLuint buffer);
 
 #endif  // gl_helper_h__

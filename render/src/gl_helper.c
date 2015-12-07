@@ -201,7 +201,7 @@ void deinit_framebuffer(GLuint framebuffer) {
 }
 
 
-GLuint init_buffer(GLuint attribute, GLfloat data[], int length) {
+GLuint init_buffer(GLfloat data[], int length) {
 	GLuint buffer;
 
 	glGenBuffers(1, &buffer);
@@ -213,13 +213,26 @@ GLuint init_buffer(GLuint attribute, GLfloat data[], int length) {
 	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * length, data, GL_DYNAMIC_DRAW);
 	check();
 
+	return buffer;
+}
+
+void bind_buffer(GLuint attribute, GLuint buffer, int length) {
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+	check();
+
 	glVertexAttribPointer(attribute, 2, GL_FLOAT, 0, length, 0);
 	check();
 
 	glEnableVertexAttribArray(attribute);
 	check();
+}
 
-	return buffer;
+void update_buffer(GLuint buffer, GLfloat data[], int length) {
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+	check();
+
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GLfloat) * length, data);
+	check();
 }
 
 void deinit_buffer(GLuint buffer) {

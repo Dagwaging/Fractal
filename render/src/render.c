@@ -48,6 +48,9 @@ static GLuint attr_vertex;
 static GLuint attr_tcoord;
 static GLuint uniform_previous;
 
+static GLuint vertex_buffer;
+static GLuint texture_buffer;
+
 static int shader_ready = 0;
 
 
@@ -65,6 +68,16 @@ int init() {
 	if(!png_init())
 		return 0;
 
+	GLfloat vertex_data[] = {
+		-1.0, -1.0,
+		 1.0, -1.0,
+		 1.0,  1.0,
+		-1.0,  1.0
+	};
+
+	vertex_buffer = init_buffer(vertex_data, 8);
+	texture_buffer = init_buffer(NULL, 8);
+
 	printlog("Initialized OpenGL");
 
 	gl_ready = 1;
@@ -75,6 +88,9 @@ int init() {
 int deinit() {
 	if(!gl_ready)
 		return 1;
+
+	deinit_buffer(vertex_buffer);
+	deinit_buffer(texture_buffer);
 	
 	if(!png_deinit())
 		return 0;
@@ -137,6 +153,9 @@ int set_shader(const char* shader) {
 	attr_tcoord = glGetAttribLocation(program, "texture_coordinate");
 	check();
 
+	bind_buffer(attr_vertex, vertex_buffer, 8);
+	bind_buffer(attr_tcoord, texture_buffer, 8);
+
 	uniform_previous = glGetUniformLocation(program, "previous");
 	check();
 
@@ -152,12 +171,7 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	int size = -1;
 
-	GLfloat vertex_data[] = {
-		-1.0,-1.0,
-		1.0,-1.0,
-		1.0,1.0,
-		-1.0,1.0
-	};
+	printlog("Drawing fractal...");
 
 	GLfloat tcoord_data[] = {
 		xMin, yMin,
@@ -166,14 +180,11 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 		xMin, yMax
 	};
 
-	GLuint buf = init_buffer(attr_vertex, vertex_data, 8);
-	GLuint tbuf = init_buffer(attr_tcoord, tcoord_data, 8);
-
-	printlog("Drawing fractal...");
+	update_buffer(texture_buffer, tcoord_data, 8);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, tex_fb);
 	check();
-	glBindBuffer(GL_ARRAY_BUFFER, buf);
+	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
 
 	glUniform1i(uniform_previous, GL_TEXTURE1);
 	check();
@@ -207,9 +218,6 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 	char log[20];
 	sprintf(log, "%d bytes written", size);
 	printlog(log);
-
-	deinit_buffer(buf);
-	deinit_buffer(tbuf);
 
 	return size;
 }
