@@ -20,6 +20,12 @@ static int size_ready = 0;
 
 #define min(a, b) (a < b ? a : b)
 
+static void printlog(const char* message) {
+	//struct timespec time;
+	//clock_gettime(CLOCK_REALTIME, &time);
+	//fprintf(stderr, "%ld.%09ld\t\t%s\n", (long) time.tv_sec, time.tv_nsec, message);
+}
+
 static int align(int length) {
 	return (((length - 1) >> 4) + 1) << 4;
 }
@@ -168,6 +174,8 @@ int png_encode(char* input_image, char** output_image) {
 	if(!(ready && size_ready))
 		return -1;
 
+	printlog("Executing encoder...");
+
 	if(ilclient_change_component_state(encoder, OMX_StateExecuting)) {
 		fprintf(stderr, "Unable to set encoder state to executing\n");
 		return -1;
@@ -175,10 +183,14 @@ int png_encode(char* input_image, char** output_image) {
 
 	char* image = NULL, * output = NULL;
 
+	printlog("Aligning image...");
+
 	int length = align_image(input_image, image_width, image_height, &image);
 
 	int read_in = 0, read_out = 0;
 	OMX_BUFFERHEADERTYPE* buffer;
+
+	printlog("Filling input buffer...");
 
 	while(length > 0) {
 		buffer = ilclient_get_input_buffer(encoder, encoder_inport, 1);
@@ -196,19 +208,32 @@ int png_encode(char* input_image, char** output_image) {
 
 			if(OMX_EmptyThisBuffer(encoder_handle, buffer) != OMX_ErrorNone)
 				fprintf(stderr, "Error emptying buffer\n");
+
+			printlog("Emptying input buffer...");
 		}
 	}
 
 	free(image);
 
 	while(1) {
+		printlog("Getting output buffer...");
+
 		buffer = ilclient_get_output_buffer(encoder, encoder_outport, 1);
 
 		if(buffer) {
+			printlog("Got output buffer");
+
 			output = realloc(output, read_out + buffer->nFilledLen);
+
+			printlog("Copying output buffer...");
+
 			memcpy(output + read_out, buffer->pBuffer, buffer->nFilledLen);
 
+			printlog("Copied output buffer");
+
 			read_out += buffer->nFilledLen;
+
+			printlog("Filling output buffer...");
 
 			if(buffer->nFlags & OMX_BUFFERFLAG_EOS)
 				break;
@@ -224,6 +249,8 @@ int png_encode(char* input_image, char** output_image) {
 	}
 
 	*output_image = output;
+
+	printlog("Done encoding");
 
 	return read_out;
 }
