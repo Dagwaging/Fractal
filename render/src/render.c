@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 
@@ -23,21 +24,17 @@ static const GLchar *vshader_source =
 
 static EGLDisplay display;
 static EGLContext context;
+static EGLConfig config;
+static EGLSurface default_surface;
 static EGLSurface surface;
 
 static int gl_ready = 0;
 
 
-static int tex_width;
-static int tex_height;
+static int surface_width;
+static int surface_height;
 
-static GLuint tex;
-static GLuint tex_fb;
-
-static GLuint tex2;
-static GLuint tex_fb2;
-
-static int tex_ready = 0;
+static int surface_ready = 0;
 
 
 static GLuint vshader;
@@ -60,7 +57,7 @@ int init() {
 
 	printlog("Intializing OpenGL...");
 
-	if(!init_gl(&display, &context, &surface))
+	if(!init_gl(&display, &context, &default_surface, &config))
 		return 0;
 
 	vshader = init_shader(vshader_source, GL_VERTEX_SHADER, NULL);
@@ -95,7 +92,15 @@ int deinit() {
 	if(!png_deinit())
 		return 0;
 
-	if(!deinit_gl(display, context, surface))
+	if(surface_ready) {
+		if(!deinit_surface(display, surface))
+			return 0;
+	}
+
+	if(!deinit_surface(display, default_surface))
+		return 0;
+
+	if(!deinit_gl(display, context))
 		return 0;
 
 	gl_ready = 0;
@@ -107,34 +112,27 @@ int set_size(int width, int height) {
 	if(!gl_ready)
 		return 0;
 
-	printlog("Initializing textures...");
+	printlog("Initializing surface...");
 
-	if(tex_ready) {
-		deinit_texture(tex);
-		deinit_framebuffer(tex_fb);
-
-		deinit_texture(tex2);
-		deinit_framebuffer(tex_fb2);
+	if(surface_ready) {
+		deinit_surface(display, surface);
 	}
 
-	tex_width = width;
-	tex_height = height;
+	surface_width = width;
+	surface_height = height;
 
-	tex = init_texture(GL_TEXTURE0, width, height);
-	tex_fb = init_framebuffer(tex);
-
-	tex2 = init_texture(GL_TEXTURE1, width, height);
-	tex_fb2 = init_framebuffer(tex2);
+	if(!init_surface(width, height, display, context, config, &surface))
+		return 0;
 
 	glViewport(0, 0, width, height);
 	check();
 
-	tex_ready = 1;
+	surface_ready = 1;
 
 	if(!png_set_size(width, height))
 		return 0;
 
-	printlog("Initialized textures");
+	printlog("Initialized surface");
 
 	return 1;
 }
@@ -173,7 +171,7 @@ int set_shader(const char* shader) {
 }
 
 int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
-	if(!(gl_ready && tex_ready && shader_ready))
+	if(!(gl_ready && surface_ready && shader_ready))
 		return -1;
 
 	int size = -1;
@@ -189,7 +187,6 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	update_buffer(texture_buffer, tcoord_data, 8);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, tex_fb);
 	check();
 	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
 
@@ -211,8 +208,8 @@ int render(float xMin, float yMin, float xMax, float yMax, char** buffer) {
 
 	printlog("Getting rendered pixels...");
 
-	char* image = (char*) malloc(sizeof(char) * tex_width * tex_height * 3);
-	glReadPixels(0, 0, tex_width, tex_height, GL_RGB, GL_UNSIGNED_BYTE, image);
+	char* image = (char*) malloc(sizeof(char) * surface_width * surface_height * 3);
+	glReadPixels(0, 0, surface_width, surface_height, GL_RGB, GL_UNSIGNED_BYTE, image);
 	check();
 
 	printlog("Got rendered pixels");

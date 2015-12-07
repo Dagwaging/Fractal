@@ -6,7 +6,7 @@
 
 #define check() //assert(glGetError() == 0)
 
-int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface) {
+int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurface, EGLConfig* outConfig) {
 	EGLConfig config;
 	EGLint num_config;
 
@@ -58,26 +58,15 @@ int init_gl(EGLDisplay* outDisplay, EGLContext* outContext, EGLSurface* outSurfa
 		return 0;
 	check();
 
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	check();
-
 	*outDisplay = display;
 	*outContext = context;
 	*outSurface = surface;
+	*outConfig = config;
 
 	return 1;
 }
 
-int deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface) {
-	if(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) == EGL_FALSE)
-		return 0;
-	check();
-
-	if(eglDestroySurface(display, surface) == EGL_FALSE)
-		return 0;
-	check();
-	
+int deinit_gl(EGLDisplay display, EGLContext context) {
 	if(eglDestroyContext(display, context) == EGL_FALSE)
 		return 0;
 	check();
@@ -87,6 +76,49 @@ int deinit_gl(EGLDisplay display, EGLContext context, EGLSurface surface) {
 	check();
 
 	bcm_host_deinit();
+
+	return 1;
+}
+
+
+int init_surface(int width, int height, EGLDisplay display, EGLContext context, EGLConfig config, EGLSurface* outSurface) {
+	EGLSurface surface;
+
+	EGLint surface_attributes[] = {
+		EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGB,
+		EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+		EGL_WIDTH, width,
+		EGL_HEIGHT, height,
+		EGL_NONE
+	};
+
+	if((surface = eglCreatePbufferSurface(display, config, surface_attributes)) == EGL_NO_SURFACE) {
+		check();
+		return 0;
+	}
+
+	if(eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
+		check();
+		return 0;
+	}
+
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	check();
+
+	*outSurface = surface;
+
+	return 1;
+}
+
+int deinit_surface(EGLDisplay display, EGLSurface surface) {
+	if(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) == EGL_FALSE)
+		return 0;
+	check();
+
+	if(eglDestroySurface(display, surface) == EGL_FALSE)
+		return 0;
+	check();
 
 	return 1;
 }
@@ -148,55 +180,6 @@ void deinit_program(GLuint program) {
 	check();
 
 	glDeleteProgram(program);
-	check();
-}
-
-
-GLuint init_texture(GLenum texture, int width, int height) {
-	GLuint tex;
-
-	glGenTextures(1, &tex);
-	check();
-
-	glActiveTexture(texture);
-	check();
-
-	glBindTexture(GL_TEXTURE_2D, tex);
-	check();
-
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
-	check();
-
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	check();
-
-	return tex;
-}
-
-void deinit_texture(GLuint texture) {
-	glDeleteTextures(1, &texture);
-	check();
-}
-
-
-GLuint init_framebuffer(GLuint texture) {
-	GLuint framebuffer;
-
-	glGenFramebuffers(1, &framebuffer);
-	check();
-
-	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-	check();
-
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-	check();
-
-	return framebuffer;
-}
-
-void deinit_framebuffer(GLuint framebuffer) {
-	glDeleteFramebuffers(1, &framebuffer);
 	check();
 }
 
